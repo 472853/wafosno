@@ -1004,6 +1004,252 @@ sel.onchange=build;q(".tf").addEventListener("input",calc);build();
 </script>
 </section>
 
+<!-- Paste everything below after the last </section> in tools.html (before the "NEW TOOL TEMPLATE" comment or </main>).
+     Each section carries its own CSS and JS. Uses your existing QT helpers, toast() and copy(). -->
+
+<!-- ============ BASE64 DECODER ============ -->
+<section class="tool" id="b64" data-title="Base64 decoder">
+<details open>
+  <summary><h2>Base64 decoder</h2><span class="desc">Paste Base64, get the real text, link or file back.</span></summary>
+  <div class="body">
+    <textarea class="in" rows="4" placeholder="Paste Base64 here, e.g. aHR0cHM6Ly9leGFtcGxlLmNvbQ==" spellcheck="false"></textarea>
+    <div class="row">
+      <label><input type="checkbox" class="deep" checked> Keep decoding if the result is Base64 again</label>
+      <button class="paste">Paste from clipboard</button><button class="clr">Clear</button>
+    </div>
+    <div class="note info"></div>
+    <textarea class="out" rows="4" readonly spellcheck="false" style="margin-top:8px"></textarea>
+    <div class="row">
+      <button class="p cpy">Copy result</button>
+      <a class="open" hidden target="_blank" rel="noopener noreferrer"><button>Open link ↗</button></a>
+      <button class="dl" hidden>Download file</button>
+    </div>
+    <div class="res"></div>
+    <p class="note">Everything is decoded in your browser. Handles URL-safe Base64 (<code>-</code> and <code>_</code>), missing <code>=</code> padding, line breaks and <code>data:</code> prefixes. Only open links you trust.</p>
+  </div>
+</details>
+<script>
+(()=>{
+const root=document.currentScript.closest("section"),q=s=>root.querySelector(s);
+let bytes=null,mime="",imgUrl="";
+const CTRL=/[\x00-\x08\x0E-\x1F]/;
+function b64(str){
+  const t=str.trim().replace(/^data:[^,]*;base64,/i,"").replace(/\s+/g,"").replace(/-/g,"+").replace(/_/g,"/").replace(/=+$/,"");
+  if(!t||!/^[A-Za-z0-9+/]+$/.test(t)||t.length%4===1)return null;
+  try{return Uint8Array.from(atob(t+"=".repeat((4-t.length%4)%4)),c=>c.charCodeAt(0))}catch(e){return null}
+}
+function text(b){try{const s=new TextDecoder("utf-8",{fatal:true}).decode(b);return CTRL.test(s)?null:s}catch(e){return null}}
+function sniff(b){
+  if(b[0]===0x89&&b[1]===0x50&&b[2]===0x4E&&b[3]===0x47)return"image/png";
+  if(b[0]===0xFF&&b[1]===0xD8&&b[2]===0xFF)return"image/jpeg";
+  if(b[0]===0x47&&b[1]===0x49&&b[2]===0x46&&b[3]===0x38)return"image/gif";
+  if(b[0]===0x52&&b[1]===0x49&&b[2]===0x46&&b[3]===0x46&&b[8]===0x57&&b[9]===0x45&&b[10]===0x42&&b[11]===0x50)return"image/webp";
+  return"";
+}
+function run(){
+  const v=q(".in").value,out=q(".out"),info=q(".info");
+  bytes=null;mime="";q(".res").innerHTML="";q(".open").hidden=q(".dl").hidden=true;
+  if(imgUrl){URL.revokeObjectURL(imgUrl);imgUrl=""}
+  if(!v.trim()){out.value="";info.textContent="";return}
+  let cur=b64(v),layers=1,s;
+  if(!cur){out.value="";info.textContent="That doesn't look like Base64 (allowed: A-Z a-z 0-9 + / - _ and = padding).";return}
+  for(;;){
+    s=text(cur);
+    if(!q(".deep").checked||s===null||layers>=10)break;
+    const t=s.trim().replace(/\s+/g,""),nx=/^[A-Za-z0-9+/_-]{8,}={0,2}$/.test(t)?b64(t):null;
+    if(!nx||(text(nx)===null&&!sniff(nx)))break;   // only go deeper if the next layer is real text or an image
+    cur=nx;layers++;
+  }
+  bytes=cur;mime=sniff(cur);
+  if(s!==null){
+    out.value=s;const u=s.trim();
+    if(/^https?:\/\/\S+$/i.test(u)){const a=q(".open");a.href=u;a.hidden=false}
+  }else{
+    out.value="(binary data) first bytes:\n"+[...cur.slice(0,64)].map(b=>b.toString(16).padStart(2,"0")).join(" ");
+    q(".dl").hidden=false;
+    if(mime){imgUrl=URL.createObjectURL(new Blob([cur],{type:mime}));q(".res").innerHTML=`<img src="${imgUrl}" alt="Decoded image">`}
+  }
+  info.textContent=`Decoded ${layers} layer${layers>1?"s":""} · ${cur.length} bytes · ${s!==null?"text":mime||"binary"}`;
+}
+q(".in").addEventListener("input",run);q(".deep").addEventListener("change",run);
+q(".clr").onclick=()=>{q(".in").value="";run()};
+q(".paste").onclick=async()=>{try{q(".in").value=await navigator.clipboard.readText();run()}catch(e){toast("Clipboard blocked, paste with Ctrl+V instead")}};
+q(".cpy").onclick=()=>q(".out").value?copy(q(".out").value,"result"):toast("Nothing to copy yet");
+q(".dl").onclick=()=>bytes&&QT.save(new Blob([bytes]),"decoded."+(mime?mime.split("/")[1].replace("jpeg","jpg"):"bin"));
+})();
+</script>
+</section>
+
+<!-- ============ REMOVE BACKGROUND COLOR ============ -->
+<section class="tool" id="bg-remove" data-title="Remove background color">
+<details open>
+  <summary><h2>Remove background color</h2><span class="desc">Click colors in a GIF or image to make them transparent.</span></summary>
+  <style>
+    #bg-remove .chk{display:block;max-width:100%;border:1px solid var(--bd);border-radius:6px;cursor:crosshair;background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 0 0/16px 16px}
+    #bg-remove .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+    #bg-remove .chip{display:inline-flex;align-items:center;gap:6px;background:var(--soft);border:1px solid var(--bd);border-radius:99px;padding:2px 4px 2px 6px}
+    #bg-remove .chip i{width:16px;height:16px;border-radius:50%;border:1px solid var(--bd)}
+    #bg-remove .chip button{border:0;background:none;padding:0 6px;color:var(--mut)}
+  </style>
+  <div class="body">
+    <div class="drop">Drop or <u style="color:var(--ac);cursor:pointer">browse for</u> a GIF or image<input type="file" accept="image/*" hidden></div>
+    <div class="work" hidden>
+      <div class="pvwrap" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
+        <div>
+          <canvas class="cv chk"></canvas>
+          <div class="row seekrow" hidden><label>Preview frame <input type="range" class="seek" min="0" max="1000" value="0" style="width:200px"></label></div>
+          <div class="note meta"></div>
+          <p class="note">Click the image to add the color under the cursor. Add as many colors as you need. The checkerboard shows what will be transparent.</p>
+        </div>
+        <div>
+          <h3 class="sec" style="margin-top:0">Colors to remove</h3>
+          <div class="chips"></div>
+          <div class="row"><button class="corner">+ Top-left pixel</button><button class="white">+ White</button><button class="black">+ Black</button><button class="clr">Clear</button></div>
+          <h3 class="sec">Matching</h3>
+          <div class="row"><label>Tolerance <input type="range" class="tol" min="0" max="100" value="12" style="width:140px"> <span class="tv">12</span>%</label></div>
+          <div class="row"><label>Soft edge <input type="range" class="fth" min="0" max="40" value="0" style="width:140px"> <span class="fv">0</span>%</label></div>
+          <div class="row"><label><input type="checkbox" class="cont"> Only remove areas connected to the image edge</label></div>
+          <p class="note">Edge-only mode keeps matching colors inside the subject (white eyes on a white background, for example). Tolerance catches near-matches like JPEG noise.</p>
+          <h3 class="sec">Export</h3>
+          <div class="row"><button class="p ex-png">PNG (this frame)</button><button class="ex-gif" hidden>GIF (all frames)</button></div>
+          <progress class="prog" value="0" max="1" hidden></progress><div class="note stat"></div>
+          <p class="note">GIFs only support fully on or off transparency, so soft edges get rounded to hard edges in GIF output. Use PNG if you need smooth edges.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</details>
+<script>
+(()=>{
+const root=document.currentScript.closest("section"),q=s=>root.querySelector(s);
+let src=null,file=null,orig=null,W=0,H=0,cols=[],raf=0;
+const cv=q(".cv"),ctx=cv.getContext("2d",{willReadFrequently:true});
+const hex=c=>"#"+c.map(v=>v.toString(16).padStart(2,"0")).join("").toUpperCase();
+
+/* Makes matching pixels transparent, in place. d = RGBA array. */
+function key(d,w,h){
+  if(!cols.length)return;
+  const n=w*h,thr=q(".tol").value/100*441,f=q(".fth").value/100*441,lim2=(thr+f)*(thr+f),dist=new Float32Array(n).fill(1e9);
+  for(let p=0;p<n;p++){
+    const i=p*4;if(!d[i+3])continue;
+    let m=1e9;
+    for(const c of cols){const a=d[i]-c[0],b=d[i+1]-c[1],e=d[i+2]-c[2],v=a*a+b*b+e*e;if(v<m)m=v}
+    if(m<=lim2)dist[p]=Math.sqrt(m);
+  }
+  let ok=null;
+  if(q(".cont").checked){            /* flood fill inward from the border */
+    ok=new Uint8Array(n);const st=new Int32Array(n);let sp=0;
+    const push=p=>{if(!ok[p]&&dist[p]<1e9){ok[p]=1;st[sp++]=p}};
+    for(let x=0;x<w;x++){push(x);push((h-1)*w+x)}
+    for(let y=0;y<h;y++){push(y*w);push(y*w+w-1)}
+    while(sp){const p=st[--sp],x=p%w;if(x>0)push(p-1);if(x<w-1)push(p+1);if(p>=w)push(p-w);if(p<n-w)push(p+w)}
+  }
+  for(let p=0;p<n;p++){
+    if(dist[p]>=1e9||(ok&&!ok[p]))continue;
+    const k=dist[p]<=thr?0:(dist[p]-thr)/f;
+    d[p*4+3]=Math.round(d[p*4+3]*k);
+  }
+}
+function draw(){
+  if(!orig)return;
+  const id=new ImageData(new Uint8ClampedArray(orig.data),W,H);key(id.data,W,H);ctx.putImageData(id,0,0);
+}
+const sched=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(draw)};
+
+function chips(){
+  const box=q(".chips");box.innerHTML="";
+  if(!cols.length){box.innerHTML='<span class="note">Nothing picked yet. Click the image.</span>';return}
+  cols.forEach((c,i)=>{
+    const b=document.createElement("span");b.className="chip";
+    b.innerHTML='<i></i><code></code><button title="Remove">✕</button>';
+    b.firstChild.style.background=hex(c);b.children[1].textContent=hex(c);
+    b.lastChild.onclick=()=>{cols.splice(i,1);chips();sched()};
+    box.append(b);
+  });
+}
+function add(c){
+  if(cols.some(x=>Math.abs(x[0]-c[0])+Math.abs(x[1]-c[1])+Math.abs(x[2]-c[2])<3))return toast("Already in the list");
+  cols.push(c);chips();sched();
+}
+function px(x,y){
+  const i=(y*W+x)*4;
+  if(!orig.data[i+3])return toast("That pixel is already transparent");
+  add([orig.data[i],orig.data[i+1],orig.data[i+2]]);
+}
+cv.onclick=e=>{
+  if(!orig)return;const r=cv.getBoundingClientRect();
+  px(Math.min(W-1,Math.max(0,Math.floor((e.clientX-r.left)*W/r.width))),Math.min(H-1,Math.max(0,Math.floor((e.clientY-r.top)*H/r.height))));
+};
+q(".corner").onclick=()=>orig&&px(0,0);
+q(".white").onclick=()=>add([255,255,255]);
+q(".black").onclick=()=>add([0,0,0]);
+q(".clr").onclick=()=>{cols=[];chips();sched()};
+
+async function frame(){
+  const d=await src.frameAt(src.dur?q(".seek").value/1000*src.dur:0);
+  const t=document.createElement("canvas");t.width=W;t.height=H;
+  const x=t.getContext("2d",{willReadFrequently:true});
+  QT.draw(x,d,0,0,W,H);orig=x.getImageData(0,0,W,H);draw();
+}
+async function load(f){
+  if(!f.type.startsWith("image/"))return toast("That isn't an image or GIF");
+  try{src=await QT.open(f);file=f}catch(e){return toast(e.message)}
+  W=src.w;H=src.h;cv.width=W;cv.height=H;cols=[];
+  q(".work").hidden=false;q(".seekrow").hidden=!src.dur;q(".seek").value=0;q(".ex-gif").hidden=src.kind!=="gif";
+  q(".meta").textContent=`${W}×${H} · ${src.kind.toUpperCase()}${src.dur?` · ${src.dur.toFixed(2)} s`:""}${src.warn?" · "+src.warn:""}`;
+  chips();await frame();
+}
+root.addEventListener("input",e=>{
+  if(e.target.matches(".tol")){q(".tv").textContent=e.target.value;sched()}
+  else if(e.target.matches(".fth")){q(".fv").textContent=e.target.value;sched()}
+  else if(e.target.matches(".cont"))sched();
+  else if(e.target.matches(".seek"))frame();
+});
+
+/* ---- export ---- */
+const base=()=>file.name.replace(/\.[^.]+$/,"")+"-nobg";
+q(".ex-png").onclick=()=>cv.toBlob(b=>QT.save(b,base()+".png"));
+
+/* GIF frame with a transparent palette slot (QT.GifEnc has no transparency, so this adds frames to it directly) */
+function addFrame(enc,data,cs){
+  const pal=QT.palette(data,255),T=pal.length,idx=new Uint8Array(W*H),cache=new Map();
+  for(let p=0;p<idx.length;p++){
+    const i=p*4;
+    if(data[i+3]<128){idx[p]=T;continue}
+    const k=((data[i]>>2)<<12)|((data[i+1]>>2)<<6)|(data[i+2]>>2);let v=cache.get(k);
+    if(v===undefined){v=QT.nearest(pal,data[i],data[i+1],data[i+2]);cache.set(k,v)}
+    idx[p]=v;
+  }
+  let bits=2;while((1<<bits)<T+1)bits++;
+  const ct=new Uint8Array(3<<bits);pal.forEach((c,i)=>ct.set(c,i*3));
+  /* 9 = "restore to background" disposal + transparency flag; T = transparent index */
+  const head=new Uint8Array([0x21,0xF9,4,9,cs&255,cs>>8,T,0,0x2C,0,0,0,0,W&255,W>>8,H&255,H>>8,0x80|(bits-1)]);
+  const code=QT.lzw(bits,idx),sub=[bits];
+  for(let i=0;i<code.length;i+=255){const l=Math.min(255,code.length-i);sub.push(l);for(let k=0;k<l;k++)sub.push(code[i+k])}
+  sub.push(0);enc.p.push(head,ct,new Uint8Array(sub));
+}
+q(".ex-gif").onclick=async()=>{
+  if(!cols.length)return toast("Pick a color to remove first");
+  const c=document.createElement("canvas");c.width=W;c.height=H;
+  const x=c.getContext("2d",{willReadFrequently:true}),enc=new QT.GifEnc(W,H),prog=q(".prog"),btn=q(".ex-gif");
+  btn.disabled=true;prog.hidden=false;prog.value=0;q(".stat").textContent="Working…";
+  try{
+    for await(const f of src.iter(0,0,src.dur)){
+      x.clearRect(0,0,W,H);QT.draw(x,f.img,0,0,W,H);
+      const id=x.getImageData(0,0,W,H);key(id.data,W,H);
+      addFrame(enc,id.data,Math.max(2,Math.round(f.delay*100)));
+      prog.value=Math.min(1,f.t/src.dur);await QT.sleep(0);
+    }
+    const b=enc.finish();QT.save(b,base()+".gif");q(".stat").textContent="Done · "+QT.kb(b.size);
+  }catch(e){q(".stat").textContent="Failed: "+e.message}
+  btn.disabled=false;prog.hidden=true;
+};
+QT.drop(q(".drop"),load,false);
+chips();
+})();
+</script>
+</section>
+
 <!--
 ===== NEW TOOL TEMPLATE: copy this block, remove the comment markers, edit =====
 <section class="tool" id="my-tool" data-title="My tool">
